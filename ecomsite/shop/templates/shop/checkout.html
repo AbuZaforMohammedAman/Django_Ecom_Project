@@ -1,0 +1,266 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Checkout | ABC Shopping</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap CSS -->
+    <link 
+      rel="stylesheet" 
+      href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"
+      integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" 
+      crossorigin="anonymous">
+    <style>
+      .checkout-summary-title { font-size:1.25rem; font-weight:600; }
+      .checkout-total-row { font-size:1.1rem; font-weight:700; }
+    </style>
+</head>
+<body class="bg-light">
+
+    <!-- Top Mini Navbar (optional) -->
+    <nav class="navbar navbar-dark bg-dark justify-content-between">
+        <a class="navbar-brand" href="/">ABC Shopping</a>
+        <button id="cart-btn" 
+                type="button" 
+                class="btn btn-sm btn-warning" 
+                data-toggle="popover" 
+                data-html="true" 
+                data-placement="bottom"
+                data-content="Your cart is empty">
+            🛒 Cart(0)
+        </button>
+    </nav>
+
+    <div class="container py-5">
+        <div class="row">
+            <!-- Order Summary -->
+            <div class="col-lg-5 mb-4">
+                <div class="card shadow-sm">
+                    <div class="card-header checkout-summary-title">
+                        Order Summary
+                    </div>
+                    <ul class="list-group list-group-flush" id="item_list">
+                        <!-- JS injects cart rows here -->
+                    </ul>
+                    <div class="card-body text-right">
+                        <button id="clear-cart" type="button" class="btn btn-sm btn-outline-danger">
+                            Clear Cart
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Checkout Form -->
+            <div class="col-lg-7">
+                <div class="card shadow-sm">
+                    <div class="card-header">
+                        Shipping & Billing Details
+                    </div>
+                    <div class="card-body">
+                        <form id="checkout-form" method="POST" novalidate>
+                            {% csrf_token %}
+                            <input type="hidden" id="items" name="items">
+                            <div class="form-row">
+                                <div class="form-group col-md-6">
+                                    <label for="name">Name</label>
+                                    <input id="name" name="name" type="text" class="form-control" placeholder="John" required>
+                                </div>
+                                <div class="form-group col-md-6">
+                                    <label for="email">Email</label>
+                                    <input id="email" name="email" type="email" class="form-control" placeholder="john@john.com" required>
+                                </div>
+                            </div>
+
+                            <div class="form-group">
+                                <label for="address">Address</label>
+                                <input id="address" name="address" type="text" class="form-control" placeholder="1234 Main St" required>
+                            </div>
+
+                            <div class="form-row">
+                                <div class="form-group col-md-6">
+                                    <label for="city">City</label>
+                                    <input id="city" name="city" type="text" class="form-control" required>
+                                </div>
+                                <div class="form-group col-md-4">
+                                    <label for="state">State</label>
+                                    <input id="state" name="state" type="text" class="form-control" required>
+                                </div>
+                                <div class="form-group col-md-2">
+                                    <label for="zipcode">Zip</label>
+                                    <input id="zipcode" name="zipcode" type="text" class="form-control" required>
+                                </div>
+                            </div>
+
+                            <div class="form-group col-md-4 p-0">
+                                <label for="total">Amount to be paid</label>
+                                <input readonly type="text" class="form-control" id="total" name="total">
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-block mt-3">
+                                Place Order
+                            </button>
+                        </form>
+                    </div>
+                </div>  
+            </div>
+        </div>
+    </div>
+
+    <!-- JS libs -->
+    <script 
+      src="https://code.jquery.com/jquery-3.4.1.min.js"
+      integrity="sha256-CSXorXvZcTkaix6Yvo6HppcZGetbYMGWSFlBw8HfCJo="
+      crossorigin="anonymous"></script>
+    <script 
+      src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"
+      integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1"
+      crossorigin="anonymous"></script>
+    <script 
+      src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"
+      integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIyqV+0p3JSk3x0l5Nq6K6YfRvH+8abtTE1Pi6jizo"
+      crossorigin="anonymous"></script>
+
+    <script>
+    (function() {
+        var currency = "{{ currency_symbol|default:'$' }}"; // override in context if desired
+
+        // --- Load cart from localStorage ---
+        var cart = {};
+        try {
+            cart = JSON.parse(localStorage.getItem('cart')) || {};
+        } catch(e) {
+            cart = {};
+        }
+
+        // --- Normalize legacy cart structure ---
+        // Expected new structure: cart[id] = [qty, name, unit_price]
+        // Legacy structure may have cart[id][2] as running subtotal; try to infer unit price.
+        Object.keys(cart).forEach(function(id){
+            var entry = cart[id];
+            if (entry.length >= 3) {
+                var qty = parseFloat(entry[0]) || 0;
+                var name = entry[1];
+                var third = parseFloat(entry[2]) || 0;
+                // If third looks like total and qty>0, derive unit price:
+                // Heuristic: if qty>1 and third/qty not approx 3rd? We'll accept third as total if qty>1 and user had old code.
+                var unit_price;
+                if (qty > 1) {
+                    unit_price = third / qty;
+                } else {
+                    unit_price = third;
+                }
+                cart[id] = [qty, name, unit_price];
+            }
+        });
+
+        // --- Build order summary list ---
+        function renderSummary() {
+            var $list = $('#item_list');
+            $list.empty();
+
+            var total = 0;
+            var hasItems = false;
+
+            for (var id in cart) {
+                if (!cart.hasOwnProperty(id)) continue;
+                var qty = Number(cart[id][0]) || 0;
+                if (qty <= 0) continue;
+                hasItems = true;
+                var name = cart[id][1];
+                var unitPrice = Number(cart[id][2]) || 0;
+                var lineTotal = qty * unitPrice;
+                total += lineTotal;
+
+                var itemRow = `
+                    <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <div>
+                            <strong>${name}</strong><br>
+                            <small>Qty: ${qty} × ${currency}${unitPrice.toFixed(2)}</small>
+                        </div>
+                        <span class="badge badge-warning badge-pill">${currency}${lineTotal.toFixed(2)}</span>
+                    </li>`;
+                $list.append(itemRow);
+            }
+
+            if (!hasItems) {
+                $list.append(`
+                    <li class="list-group-item text-center text-muted">
+                        Your cart is empty.
+                    </li>`);
+            }
+
+            // Total row
+            var totalRow = `
+                <li class="list-group-item checkout-total-row d-flex justify-content-between align-items-center">
+                    <span>Total</span>
+                    <span>${currency}${total.toFixed(2)}</span>
+                </li>`;
+            $list.append(totalRow);
+
+            // Update total input field
+            $('#total').val(total.toFixed(2));
+        }
+
+        // --- Populate popover cart preview in navbar ---
+        function updateCartPopover() {
+            var cartHtml = "<h6>Your Cart</h6><hr>";
+            var hasItems = false;
+            var total = 0;
+            for (var id in cart) {
+                if (!cart.hasOwnProperty(id)) continue;
+                var qty = Number(cart[id][0]) || 0;
+                if (qty <= 0) continue;
+                hasItems = true;
+                var name = cart[id][1];
+                var unitPrice = Number(cart[id][2]) || 0;
+                var lineTotal = qty * unitPrice;
+                total += lineTotal;
+                cartHtml += name + " (" + qty + ") - " + currency + lineTotal.toFixed(2) + "<br>";
+            }
+            if (!hasItems) {
+                cartHtml += "Your cart is empty.<br>";
+            } else {
+                cartHtml += "<hr>Total: " + currency + total.toFixed(2);
+            }
+            cartHtml += "<br><a href='/checkout' class='btn btn-sm btn-warning mt-2'>Checkout</a>";
+
+            var $cartBtn = $('#cart-btn');
+            $cartBtn.attr('data-content', cartHtml);
+            $cartBtn.html("🛒 Cart(" + countCartItems() + ")");
+            // Re-init popover
+            $cartBtn.popover('dispose').popover();
+        }
+
+        function countCartItems() {
+            var n = 0;
+            Object.keys(cart).forEach(function(id){
+                if ((Number(cart[id][0]) || 0) > 0) n++;
+            });
+            return n;
+        }
+
+        // --- Clear cart ---
+        $('#clear-cart').on('click', function(){
+            if (confirm("Clear all items from cart?")) {
+                cart = {};
+                localStorage.removeItem('cart');
+                renderSummary();
+                updateCartPopover();
+                $('#items').val(''); // nothing to send
+            }
+        });
+
+        // --- On form submit: inject cart JSON + total into hidden fields ---
+        $('#checkout-form').on('submit', function(){
+            $('#items').val(JSON.stringify(cart));
+            // #total already set.
+        });
+
+        // Initial render
+        renderSummary();
+        updateCartPopover();
+    })();
+    </script>
+</body>
+</html>

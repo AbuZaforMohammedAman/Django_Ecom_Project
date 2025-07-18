@@ -1,0 +1,91 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+    <title>{{ product_object.title }}</title>
+</head>
+<body>
+    <!-- ✅ Navbar with Cart Button -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
+        <a class="navbar-brand" href="#">ABC Shopping</a>
+        <div class="ml-auto">
+            <button id="cart" class="btn btn-sm btn-warning" 
+                data-toggle="popover" data-html="true" data-placement="bottom"
+                data-content="Your cart is empty">
+                🛒 Cart(0)
+            </button>
+        </div>
+    </nav>
+
+    <div class="container py-5">
+        <div class="row">
+            <!-- Product Image -->
+            <div class="col-md-6">
+                <img src="{{ product_object.image }}" alt="{{ product_object.title }}" class="img-fluid rounded shadow">
+            </div>
+
+            <!-- Product Details -->
+            <div class="col-md-6">
+                <h2 id="nm{{ product_object.id }}">{{ product_object.title }}</h2>
+                <p>{{ product_object.description }}</p>
+                <h4 class="text-danger">Price: $<span id="price{{ product_object.id }}">{{ product_object.price }}</span></h4>
+                <h5 class="text-success">Discount: ${{ product_object.discount_price }}</h5>
+
+                <div class="mt-4">
+                    <button id="{{ product_object.id }}" class="btn btn-warning atc">Add to Cart</button>
+                    <a href="/checkout" class="btn btn-primary ml-2">Buy Now</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JS for Cart -->
+    <script src="https://code.jquery.com/jquery-3.4.1.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js"></script>
+    
+    <script>
+        if(localStorage.getItem('cart') == null){
+            var cart = {};
+        } else {
+            cart = JSON.parse(localStorage.getItem('cart'));
+        }
+        updateCartButton();
+
+        $(document).on('click', '.atc', function(){
+            var item_id = this.id.toString();
+            var price = parseFloat(document.getElementById("price"+item_id).innerHTML);
+            var name = document.getElementById("nm"+item_id).innerHTML;
+
+            if(cart[item_id] != undefined){
+                cart[item_id][0] += 1;
+                cart[item_id][2] += price;
+            } else {
+                cart[item_id] = [1, name, price];
+            }
+            localStorage.setItem('cart', JSON.stringify(cart));
+            updateCartButton();
+            DisplayCart(cart);
+        });
+
+        function updateCartButton() {
+            document.getElementById("cart").innerHTML = "🛒 Cart(" + Object.keys(cart).length + ")";
+        }
+
+        function DisplayCart(cart){
+            var cartString = "<h6>Your Cart</h6><hr>";
+            for(var item in cart){
+                cartString += cart[item][1] + " (Qty: " + cart[item][0] + ")<br>";
+            }
+            cartString += "<hr><a href='/checkout'><button class='btn btn-sm btn-warning mt-2'>Checkout</button></a>";
+            document.getElementById("cart").setAttribute('data-content', cartString);
+            $('[data-toggle="popover"]').popover('dispose').popover(); // Refresh popover
+        }
+
+        DisplayCart(cart); // Show existing cart on page load
+    </script>
+</body>
+</html>
